@@ -1,0 +1,9 @@
+## Interface: 30300
+## Title: NpcAbilities-wotlk
+## Notes: Adds NPC abilities to their tooltips.
+## Author: Kwayver_AI
+## Version: 1.1.0
+
+npcs.lua
+enUS.lua
+NpcAbilities.lua
