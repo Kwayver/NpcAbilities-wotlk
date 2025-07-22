@@ -101,17 +101,44 @@ local function GetSpellData(spellId)
     return spellData
 end
 
--- Add ability details to tooltip
+-- Configuration table for tooltip detail level
+local NpcAbilitiesConfig = {
+    showFullDetails = true -- If true, always show full details unless Shift is held
+}
+
+-- Slash command to toggle tooltip detail level
+SLASH_NPCABILITIESDETAILS1 = "/npcabilitiesdetails"
+SlashCmdList["NPCABILITIESDETAILS"] = function(msg)
+    if msg == "full" then
+        NpcAbilitiesConfig.showFullDetails = true
+        DEFAULT_CHAT_FRAME:AddMessage("NpcAbilities: Showing full details in tooltips.")
+    elseif msg == "minimal" then
+        NpcAbilitiesConfig.showFullDetails = false
+        DEFAULT_CHAT_FRAME:AddMessage("NpcAbilities: Showing minimal details in tooltips.")
+    else
+        DEFAULT_CHAT_FRAME:AddMessage("Usage: /npcabilitiesdetails full | minimal")
+    end
+end
+
+-- Helper function to determine if full details should be shown
+-- Returns true if config is set to full or if Shift is currently held down
+local function ShouldShowFullDetails()
+    return NpcAbilitiesConfig.showFullDetails or IsShiftKeyDown()
+end
+
+-- Add ability details to the GameTooltip for a given spellId
+-- Shows minimal info (icon + name) unless config is full or Shift is held
 local function AddAbilityLinesToGameTooltip(spellId, addedAbilityLine)
     local name, rank, icon = GetSpellInfo(spellId) -- Only use name, rank, icon from GetSpellInfo
     local spellData = GetSpellData(spellId) -- From enUS.lua
 
-    -- Use NpcAbilitiesAbilityData name as fallback if GetSpellInfo fails
+    -- Use fallback name from NpcAbilitiesAbilityData if GetSpellInfo fails
     if not name and spellData and spellData.name then
         name = spellData.name
         icon = icon or 0
     end
 
+    -- If spell name is still missing, show "Unknown Spell"
     if not name then
         if not addedAbilityLine then
             GameTooltip:AddLine(" ")
@@ -125,6 +152,7 @@ local function AddAbilityLinesToGameTooltip(spellId, addedAbilityLine)
         return addedAbilityLine
     end
 
+    -- Add header line if not already added
     if not addedAbilityLine then
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine("Abilities:", 1, 0.85, 0)
@@ -133,69 +161,73 @@ local function AddAbilityLinesToGameTooltip(spellId, addedAbilityLine)
         GameTooltip:AddLine(" ")
     end
 
+    -- Format icon texture for tooltip
     local iconTexture = icon and "|T" .. icon .. ":12:12:0:0:64:64:4:60:4:60|t" or "|TInterface\\Icons\\INV_Misc_QuestionMark:12|t"
     local displayName = name .. " - " .. spellId
-    -- Use light blue color for spell name (0.4, 0.7, 1.0)
+
+    -- Always show minimal info: icon + name
     GameTooltip:AddLine(iconTexture .. " " .. displayName, 0.4, 0.7, 1.0)
 
-    -- Check for cached description and attributes
-    local description, attributes = nil, {}
-    if spellDescriptionCache[spellId] then
-        description = spellDescriptionCache[spellId].description
-        attributes = spellDescriptionCache[spellId].attributes
-    else
-        -- Try getTooltipDescription
-        description, attributes = getTooltipDescription(spellId)
-        if description then
-            spellDescriptionCache[spellId] = { description = description, attributes = attributes }
+    -- Show full details if config is full or Shift is held
+    if ShouldShowFullDetails() then
+        -- Retrieve cached description/attributes if available
+        local description, attributes = nil, {}
+        if spellDescriptionCache[spellId] then
+            description = spellDescriptionCache[spellId].description
+            attributes = spellDescriptionCache[spellId].attributes
         else
-            -- Fallback to enUS.lua or default
-            if spellData and spellData.description and spellData.description ~= "" then
-                description = spellData.description
+            -- Extract description and attributes from tooltip buffer
+            description, attributes = getTooltipDescription(spellId)
+            if description then
                 spellDescriptionCache[spellId] = { description = description, attributes = attributes }
             else
-                description = "No description available."
-                spellDescriptionCache[spellId] = { description = description, attributes = attributes }
+                -- Fallback to enUS.lua description if tooltip buffer fails
+                if spellData and spellData.description and spellData.description ~= "" then
+                    description = spellData.description
+                    spellDescriptionCache[spellId] = { description = description, attributes = attributes }
+                else
+                    description = "No description available."
+                    spellDescriptionCache[spellId] = { description = description, attributes = attributes }
+                end
             end
         end
-    end
 
-    -- Add attributes from tooltip (excluding range and cast time, which come from enUS.lua)
-    for _, attr in ipairs(attributes) do
-        -- Skip range and cast time attributes, as we'll use enUS.lua
-        if not attr:match("^%d+ yd range$") and
-           not attr:match("^%d+%.%d+ sec cast$") and
-           not attr:match("^%d+ sec cast$") and
-           not attr:match("^Instant$") and
-           not attr:match("^Instant [Cc]ast$") and
-           not attr:match("^Channeled$") and
-           not attr:match("^%d+-%d+ yd range$") then
-            GameTooltip:AddLine(attr, 1, 1, 1, true)
-        end
-    end
-
-    -- Add range and cast_time from enUS.lua if available
-    if spellData then
-        if spellData.range and spellData.range ~= "" then
-            local rangeText = string.gsub(spellData.range, "%s+$", "") -- Trim trailing spaces
-            if rangeText == "0 yards" then
-                rangeText = "Melee range"
+        -- Add relevant attributes to tooltip (filter out basic ones)
+        for _, attr in ipairs(attributes) do
+            if not attr:match("^%d+ yd range$") and
+               not attr:match("^%d+%.%d+ sec cast$") and
+               not attr:match("^%d+ sec cast$") and
+               not attr:match("^Instant$") and
+               not attr:match("^Instant [Cc]ast$") and
+               not attr:match("^Channeled$") and
+               not attr:match("^%d+-%d+ yd range$") then
+                GameTooltip:AddLine(attr, 1, 1, 1, true)
             end
-            GameTooltip:AddLine("Range: " .. rangeText, 1, 1, 1, true)
         end
 
-        if spellData.cast_time and spellData.cast_time ~= "" then
-            local castTimeText = string.gsub(spellData.cast_time, "%s+$", "") -- Trim trailing spaces
-            if castTimeText:match("^%d+ milliseconds$") then
-                local ms = tonumber(castTimeText:match("^%d+"))
-                castTimeText = string.format("%.1f sec", ms / 1000)
+        -- Add range and cast time from spellData if available
+        if spellData then
+            if spellData.range and spellData.range ~= "" then
+                local rangeText = string.gsub(spellData.range, "%s+$", "")
+                if rangeText == "0 yards" then
+                    rangeText = "Melee range"
+                end
+                GameTooltip:AddLine("Range: " .. rangeText, 1, 1, 1, true)
             end
-            GameTooltip:AddLine("Cast: " .. castTimeText, 1, 1, 1, true)
-        end
-    end
 
-    -- Add description
-    GameTooltip:AddLine("|cFFFFD700" .. description .. "|r", nil, nil, nil, true)
+            if spellData.cast_time and spellData.cast_time ~= "" then
+                local castTimeText = string.gsub(spellData.cast_time, "%s+$", "")
+                if castTimeText:match("^%d+ milliseconds$") then
+                    local ms = tonumber(castTimeText:match("^%d+"))
+                    castTimeText = string.format("%.1f sec", ms / 1000)
+                end
+                GameTooltip:AddLine("Cast: " .. castTimeText, 1, 1, 1, true)
+            end
+        end
+
+        -- Add spell description (highlighted)
+        GameTooltip:AddLine("|cFFFFD700" .. description .. "|r", nil, nil, nil, true)
+    end
 
     return addedAbilityLine
 end
