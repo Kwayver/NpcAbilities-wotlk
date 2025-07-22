@@ -1,3 +1,9 @@
+--[[ 
+NpcAbilities-wotlk
+Displays NPC abilities in tooltips. 
+Remembers user's detail preference between sessions using SavedVariables.
+--]]
+
 local addonName = "NpcAbilities-wotlk"
 
 -- Create a frame to handle events
@@ -5,6 +11,26 @@ local npcAbilitiesFrame = CreateFrame("Frame")
 
 -- Table to cache spell data (description and attributes)
 local spellDescriptionCache = {}
+
+-- SavedVariables table for persistent config
+NpcAbilitiesSavedConfig = NpcAbilitiesSavedConfig or {}
+
+-- Configuration table for tooltip detail level
+local NpcAbilitiesConfig = {
+    showFullDetails = true -- If true, always show full details unless Shift is held
+}
+
+-- Load config from SavedVariables if available
+local function LoadSavedConfig()
+    if type(NpcAbilitiesSavedConfig.showFullDetails) == "boolean" then
+        NpcAbilitiesConfig.showFullDetails = NpcAbilitiesSavedConfig.showFullDetails
+    end
+end
+
+-- Save config to SavedVariables
+local function SaveConfig()
+    NpcAbilitiesSavedConfig.showFullDetails = NpcAbilitiesConfig.showFullDetails
+end
 
 -- Create a hidden tooltip buffer for reading spell descriptions
 local tooltipBuffer = CreateFrame("GameTooltip", "TooltipBuffer", nil, "GameTooltipTemplate")
@@ -101,19 +127,16 @@ local function GetSpellData(spellId)
     return spellData
 end
 
--- Configuration table for tooltip detail level
-local NpcAbilitiesConfig = {
-    showFullDetails = true -- If true, always show full details unless Shift is held
-}
-
 -- Slash command to toggle tooltip detail level
 SLASH_NPCABILITIESDETAILS1 = "/npcabilitiesdetails"
 SlashCmdList["NPCABILITIESDETAILS"] = function(msg)
     if msg == "full" then
         NpcAbilitiesConfig.showFullDetails = true
+        SaveConfig()
         DEFAULT_CHAT_FRAME:AddMessage("NpcAbilities: Showing full details in tooltips.")
     elseif msg == "minimal" then
         NpcAbilitiesConfig.showFullDetails = false
+        SaveConfig()
         DEFAULT_CHAT_FRAME:AddMessage("NpcAbilities: Showing minimal details in tooltips.")
     else
         DEFAULT_CHAT_FRAME:AddMessage("Usage: /npcabilitiesdetails full | minimal")
@@ -285,6 +308,7 @@ end)
 npcAbilitiesFrame:RegisterEvent("ADDON_LOADED")
 npcAbilitiesFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
+        LoadSavedConfig() -- Load user's saved preference
         PrintLoadConfirmation()
     end
 end)

@@ -3,6 +3,7 @@
 ## Notes: Adds NPC abilities to their tooltips.
 ## Author: Kwayver_AI
 ## Version: 1.1.0
+## SavedVariables: NpcAbilitiesSavedConfig
 
 npcs.lua
 enUS.lua
